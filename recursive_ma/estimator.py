@@ -1,29 +1,81 @@
-import functools
-from .isotopes import ISOTOPES
+# %%
+ISOTOPES = {
+    # "Antimony": 120.903824,
+    # "Argon": 39.962383,
+    # "Arsenic": 74.921596,
+    # "Barium": 137.905236,
+    # "Bismuth": 208.980388,
+    "Bromine": 78.918336,
+    # "Cadmium": 113.903361,
+    # "Calcium": 39.962591,
+    # "Cerium": 139.905442,
+    # "Cesium": 132.905433,
+    "Chlorine": 34.968853,
+    # "Chromium": 51.94051,
+    # "Cobalt": 58.933198,
+    # "Copper": 62.929599,
+    # "Dysprosium": 163.929183,
+    # "Erbium": 165.930305,
+    # "Europium": 152.921243,
+    # "Gadolinium": 157.924111,
+    # "Gallium": 68.925581,
+    # "Germanium": 73.921179,
+    # "Gold": 196.96656,
+    # "Hafnium": 179.946561,
+    # "Holmium": 164.930332,
+    # "Indium": 114.903875,
+    "Iodine": 126.904477,
+    # "Iridium": 192.962942,
+    # "Iron": 55.934939,
+    # "Krypton": 83.911506,
+    # "Lanthanum": 138.906355,
+    # "Lead": 207.976641,
+    # "Lutetium": 174.940785,
+    # "Manganese": 54.938046,
+    # "Mercury": 201.970632,
+    # "Molybdenum": 97.905405,
+    # "Neodymium": 141.907731,
+    # "Nickel": 57.935347,
+    # "Niobium": 92.906378,
+    # "Osmium": 191.961487,
+    # "Palladium": 105.903475,
+    # "Platinum": 194.964785,
+    "Potassium": 38.963708,
+    # "Praseodymium": 140.907657,
+    # "Rhenium": 186.955765,
+    # "Rhodium": 102.905503,
+    # "Rubidium": 84.9118,
+    # "Ruthenium": 101.904348,
+    # "Samarium": 151.919741,
+    # "Scandium": 44.955914,
+    # "Selenium": 79.916521,
+    "Silver": 106.905095,
+    # "Strontium": 87.905625,
+    "Sulfur": 33.967868,
+    # "Tantalum": 180.948014,
+    # "Tellurium": 129.906229,
+    # "Terbium": 158.92535,
+    # "Thallium": 204.97441,
+    # "Thorium": 232.038054,
+    # "Thulium": 168.934225,
+    "Tin": 119.902199,
+    # "Titanium": 47.947947,
+    # "Tungsten": 183.950953,
+    # "Uranium": 238.050786,
+    # "Vanadium": 50.943963,
+    # "Xenon": 131.904148,
+    # "Ytterbium": 173.938873,
+    # "Yttrium": 88.905856,
+    "Zinc": 63.929145,
+    # "Zirconium": 89.904708,
+}
 
-import numpy as np
-from scipy.stats.distributions import skewnorm
 
-
-# Monoisotopic masses of common adduct ions
-COMMON_PRECURSORS = [
-    # Source: https://www.nist.gov/pml/atomic-weights-and-isotopic-compositions-relative-atomic-masses
-    0.0,  # Nothing
-    1.007825,  # H+
-]
-
-# Minimum MW of what can be considered a fragment
-MIN_CHUNK = 20.0
-
-def ma_distribution_params(mw):
-    alpha = -0.0044321370413747405 * mw + -1.1014882364398888
-    loc = 0.075 * mw - 1.3
-    scale = 0.008058454819492319 * mw + 0.546185725719078
-    return alpha, loc, scale
-
-def ma_samples(mw, n_samples):
-    alpha, loc, scale = ma_distribution_params(mw)
-    return np.maximum(skewnorm(alpha, loc, scale).rvs(n_samples), 0.)
+# %%
+from itertools import product
+from operator import add
+from functools import reduce
+from tqdm.auto import tqdm
 
 
 def unify_trees(trees: list[dict]):
@@ -46,119 +98,127 @@ def unify_trees(trees: list[dict]):
         }
 
 
-class MAEstimator:
-    def __init__(self, same_level=True, tol=0.01, adduct_masses=COMMON_PRECURSORS, n_samples=20):
-        self.same_level = same_level
-        self.tol = tol
-        self.adduct_masses = adduct_masses
-        self.n_samples = n_samples
-        self.zero = np.zeros(n_samples)
-
-    @functools.cache
-    def estimate_by_MW(self, mw, has_children):
-        lower, upper = mw - self.tol, mw + self.tol
-        if not has_children:
-            for isotope, weight in ISOTOPES.items():
-                if lower < weight < upper:
-                    # MW matches an isotope; MA = 0
-                    print(f"HIT: {mw} ~ {isotope} ({weight})")
-                    return self.zero
-        return ma_samples(mw, self.n_samples)
-
-    def estimate_MA(self, tree: dict[float, dict], mw: float, progress_levels=0, joint=False):
-        children = unify_trees([tree.get(mw, None) or self.precursors(tree, mw)])
-        if joint:
-            return sum(self.estimate_MA(children, child, progress_levels - 1) for child in children)
-        child_estimates = {mw: self.estimate_by_MW(mw, bool(children))}
-
-        for child in children:
-            complement = mw - child
-            if complement < MIN_CHUNK or child < MIN_CHUNK:
-                continue
-
-            common = [
-                p
-                for p in self.common_precursors(children, child, complement)
-                if p > MIN_CHUNK and max(child - p, complement - p) > MIN_CHUNK
-            ]
-
-            if common and progress_levels > 0:
-                print(f"Common precursors of {mw} = {child} + {complement}: {common}")
-
-            # Simple child + complement with no common precursors
-            ma_candidates = [
-                self.estimate_MA(children, child, progress_levels - 1)
-                + self.estimate_MA(children, complement, progress_levels - 1)
-                + 1.0
-            ]
-
-            for precursor in common:
-                chunks = [child - precursor, complement - precursor, precursor]
-                if min(chunks) < MIN_CHUNK:
+def augment(tree, tol):
+    if not tree:
+        return tree
+    augmented_subtrees = {
+        child: augment(subtree, tol) for child, subtree in tree.items()
+    }
+    for child, subtree in augmented_subtrees.items():
+        for grandchild in tree:
+            for complement in tree:
+                if complement > grandchild:
                     continue
-                chunk_mas = sum(
-                    self.estimate_MA(
-                        children,
-                        chunk,
-                        progress_levels - 1,
-                    )
-                    for chunk in chunks
-                )
-                ma_candidates.append(chunk_mas + 3)
+                if abs(child - grandchild - complement) < tol:
+                    augmented_subtrees[child] = {
+                        **subtree,
+                        grandchild: unify_trees(
+                            [tree[grandchild], subtree.get(grandchild, {})]
+                        ),
+                        complement: unify_trees(
+                            [tree[complement], subtree.get(complement, {})]
+                        ),
+                    }
+    return augmented_subtrees
 
-            child_estimates[child] = min(ma_candidates, key=np.mean)
-            if progress_levels > 0:
-                print(f"MA({mw} = {child} + {complement}) = {child_estimates[child].mean()}")
 
-        # estimate = np.concatenate(list(child_estimates.values()))
-        estimate = min(child_estimates.values(), key=np.mean)
-        return estimate
+def find_subtree(tree, child, tol):
+    return unify_trees([subtree for c, subtree in tree.items() if abs(c - child) < tol])
 
-    def common_precursors(self, data, parent1, parent2):
-        precursors1 = self.precursors(data, parent1)
-        precursors2 = self.precursors(data, parent2)
-        return set(precursors1).intersection(precursors2)
 
-    def precursors(self, data, parent):
-        if parent < MIN_CHUNK:
-            return {}
-
-        possible_ions = [parent + adduct for adduct in self.adduct_masses]
-        parent_candidates = [
-            d
-            for d in data
-            if any(d - self.tol < p < d + self.tol for p in possible_ions)
+def constructions(tree, parent, tol):
+    if isinstance(tree, list):
+        consts = [
+            constructions(next(iter(subtree.values())), next(iter(subtree.keys())), tol)
+            for subtree in tree
         ]
-        children = unify_trees(
-            [
-                {
-                    **{
-                        p - child: self.same_level_precursors(data, p - child)
-                        for child in data[p] or {}
-                    },
-                    **(data[p] or {}),
-                }
-                for p in parent_candidates
-            ]
-        )
-        if not children and self.same_level:
-            children = unify_trees(
-                [
-                    self.same_level_precursors(data, p)
-                    for p in parent_candidates or possible_ions
-                ]
+        for c in product(*consts):
+            yield (
+                reduce(add, (tup[0] for tup in c), ()),
+                reduce(add, (tup[1] for tup in c), ()),
             )
+        return
+    tree = augment(tree, tol)
+    yield ((parent,), (parent,))
+    for child, subtree in tree.items():
+        subtree1 = find_subtree(tree, child, tol)
+        subtree2 = find_subtree(tree, parent - child, tol)
+        for p1 in constructions(subtree1, child, tol):
+            for p2 in constructions(subtree2, parent - child, tol):
+                yield ((parent,) + p1[0] + p2[0], p1[1] + p2[1])
 
-        # sometimes child peaks are heavier than parent
-        return {k: v for k, v in children.items() if 0 < k < parent}
 
-    def same_level_precursors(self, data, parent):
-        result = {}
-        adducts, tol = self.adduct_masses, self.tol
-        for ion in data:
-            target = parent - ion
-            if any(
-                d - tol < target + adduct < d + tol for d in data for adduct in adducts
-            ):
-                result[ion] = data[ion]
-        return result
+def joiner(lst, mw, tol):
+    if not lst:
+        return [mw]
+    if mw - lst[-1] < tol:
+        return [*lst[:-2], (lst[-1] + mw) / 2]
+    return [*lst, mw]
+
+def leaf_ma(mw, tol):
+    for isotope_mz in ISOTOPES.values():
+        if abs(isotope_mz - mw) < tol:
+            return 0.0
+    return max(0.075 * mw - 1.3, 0.)
+    
+def ma(construction, tol):
+    all_nodes, end_nodes = construction
+    joined_all = reduce(lambda lst, mw: joiner(lst, mw, tol), sorted(all_nodes), [])
+    joined_end = reduce(lambda lst, mw: joiner(lst, mw, tol), sorted(end_nodes), [])
+    internal = len(joined_all) - len(joined_end)
+    return internal + sum(leaf_ma(mw, tol) for mw in joined_end)
+
+# %%
+test_data = {450.0: {120.0: {}, 300.0: {}, 80.0: {}, 220.0: {}, 51.0: {}, 29.01: {}}}
+test_data2 = {
+    647.8: {
+        102.1: {},
+    }
+}
+import random
+test_data_big = [
+    {random.random() * 200.0 + 250.0: {random.random() * 200.0 + 50.0: {} for _ in range(15)}}
+    for _ in range(100)
+    # {1150.0: {random.random() * 400.0 + 50.0: {} for _ in range(100)}},
+]
+joint_data = [test_data, test_data2]
+# test_data = {450.0: {150: {120:{}, 60:{}}, 300: {150: {}, 120:{}}}}
+# %%
+test_agumented = augment(test_data, 0.1)
+test_agumented2 = augment(test_data2, 0.1)
+joint_agumented = [test_agumented, test_agumented2]
+# %%
+test_data
+# %%
+list(constructions(test_data[450.0], 450.0, 0.1))
+# %%
+list(constructions(test_agumented[450.0], 450.0, 0.1))
+# %%
+list(constructions(joint_data, None, 0.1))
+
+# %%
+list(constructions(joint_agumented, None, 0.1))
+
+# %%
+{c: ma(c, 0.1) for c in constructions(joint_agumented, None, 0.1)}
+# %%
+{c: ma(c, 0.1) for c in constructions(joint_data, None, 0.1)}
+
+# %%
+{c: ma(c, 0.1) for c in constructions(test_data_big, None, 0.1)}
+
+# %%
+%%time
+optimum = min(constructions(test_data_big, None, 0.1), key=lambda c: ma(c, 0.1))
+ma(optimum, 0.1)
+
+# %%
+individuals = [min(constructions([data], None, 0.1), key=lambda c: ma(c, 0.1)) for data in test_data_big]
+x = {c: ma(c, 0.1) for c in individuals}
+x, sum(x.values())
+
+# %%
+%%time
+optimum = min(zip(constructions(test_data_big, None, 0.1), range(1500000)), key=lambda c: ma(c[0], 0.1))[0]
+optimum, ma(optimum, 0.1)
+# %%
