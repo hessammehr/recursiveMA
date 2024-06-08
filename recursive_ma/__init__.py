@@ -1,2 +1,2 @@
 from .ms_tree import build_tree, tree_depth
-from .estimator import MAEstimator
+from .estimator import estimate_ma
