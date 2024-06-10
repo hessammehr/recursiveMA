@@ -1,4 +1,3 @@
-# %%
 from .isotopes import ISOTOPES
 from itertools import product
 from operator import add
@@ -65,13 +64,13 @@ def constructions(tree, parent, tol):
                 reduce(add, (tup[1] for tup in c), ()),
             )
         return
-    yield ((parent,), (parent,))
     for child in tree:
         subtree1 = find_subtree(tree, child, tol)
         subtree2 = find_subtree(tree, parent - child, tol)
         for p1 in constructions(subtree1, child, tol):
             for p2 in constructions(subtree2, parent - child, tol):
                 yield ((parent,) + p1[0] + p2[0], p1[1] + p2[1])
+    yield ((parent,), (parent,))
 
 
 def joiner(lst, mw, tol):
