@@ -77,7 +77,7 @@ def joiner(lst, mw, tol):
     if not lst:
         return [mw]
     if mw - lst[-1] < tol:
-        return [*lst[:-2], (lst[-1] + mw) / 2]
+        return [*lst[:-1], (lst[-1] + mw) / 2]
     return [*lst, mw]
 
 def leaf_ma(mw, tol):
