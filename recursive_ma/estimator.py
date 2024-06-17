@@ -1,6 +1,6 @@
 from .isotopes import ISOTOPES
 from itertools import product
-from operator import add
+from operator import add, mul
 from functools import reduce
 
 
@@ -64,13 +64,28 @@ def constructions(tree, parent, tol):
                 reduce(add, (tup[1] for tup in c), ()),
             )
         return
+    
     for child in tree:
+        if parent - child < 1.0:
+            continue
         subtree1 = find_subtree(tree, child, tol)
         subtree2 = find_subtree(tree, parent - child, tol)
         for p1 in constructions(subtree1, child, tol):
             for p2 in constructions(subtree2, parent - child, tol):
                 yield ((parent,) + p1[0] + p2[0], p1[1] + p2[1])
     yield ((parent,), (parent,))
+
+def n_constructions(tree, parent, tol):
+    if isinstance(tree, list):
+        return reduce(mul, (n_constructions(next(iter(subtree.values())),next(iter(subtree.keys())), tol) for subtree in tree))
+    result = 1
+    for child in tree:
+        if parent - child < 1.0:
+            continue
+        subtree1 = find_subtree(tree, child, tol)
+        subtree2 = find_subtree(tree, parent - child, tol)
+        result += n_constructions(subtree1, child, tol) * n_constructions(subtree2, parent - child, tol)
+    return result
 
 
 def joiner(lst, mw, tol):
