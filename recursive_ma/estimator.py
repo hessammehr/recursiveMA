@@ -95,6 +95,23 @@ def joiner(lst, mw, tol):
         return [*lst[:-1], (lst[-1] + mw) / 2]
     return [*lst, mw]
 
+def unique(seq, tol):
+    gen = iter(seq)
+    last = next(gen)
+    yield last
+    for item in gen:
+        if item - last > tol:
+            yield item
+            last = item
+
+def overlapping(seq, tol):
+    gen = iter(seq)
+    last = next(gen)
+    for item in seq:
+        if item - last < tol:
+            yield item
+        last = item
+
 def leaf_ma(mw, tol):
     for isotope_mz in ISOTOPES.values():
         if abs(isotope_mz - mw) < tol:
@@ -103,10 +120,11 @@ def leaf_ma(mw, tol):
     
 def construction_ma(construction, tol):
     all_nodes, end_nodes = construction
-    joined_all = reduce(lambda lst, mw: joiner(lst, mw, tol), sorted(all_nodes), [])
-    joined_end = reduce(lambda lst, mw: joiner(lst, mw, tol), sorted(end_nodes), [])
+    joined_all = list(unique(sorted(all_nodes), tol))
+    joined_end = list(unique(sorted(end_nodes), tol))
+    overlaps = overlapping(sorted(joined_all + joined_end), tol)
     internal = len(joined_all) - len(joined_end)
-    return internal + sum(leaf_ma(mw, tol) for mw in joined_end)
+    return internal + sum(leaf_ma(mw, tol) for mw in joined_end) - sum(leaf_ma(mw, tol) for mw in overlaps)
 
 def estimate_ma(trees, tol):
     trees = [augment(tree, tol) for tree in trees]

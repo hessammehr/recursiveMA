@@ -3,3 +3,4 @@ __pycache__/
 .vscode/
 poetry.lock
 .DS_Store
+out/
